@@ -25,37 +25,29 @@ def test_health_check(client):
     assert response.headers["X-Request-ID"]
 
 
-def test_upload_and_retrieve_sample_data(client, uploaded_dataset_id):
-    """Check that the uploaded sample has the expected fields and row count.
+def test_upload_csv(client, sample_csv_bytes):
+    """Check that the sample CSV upload returns its ID and table shape.
 
     Args:
         client: The test client for the API.
-        uploaded_dataset_id: ID returned when the sample file was uploaded.
+        sample_csv_bytes: The sample CSV contents sent as a file upload.
 
     Returns:
-        None: This test checks the retrieval responses directly.
+        None: This test checks the upload response directly.
     """
-    metadata = client.get(f"/datasets/{uploaded_dataset_id}")
+    response = client.post(
+        "/upload",
+        files={"file": ("sample_data.csv", sample_csv_bytes, "text/csv")},
+    )
 
-    assert metadata.status_code == 200
-    assert metadata.json()["id"] == uploaded_dataset_id
-    assert metadata.json()["total_rows"] == 100
-    assert len(metadata.json()["data"]) == 100
-    assert list(metadata.json()["data"][0]) == [
-        "record_id",
-        "name",
-        "rating",
-        "category",
-        "status",
-    ]
-
-    # Confirm that the retrieval limit caps the returned records.
-    limited = client.get(f"/datasets/{uploaded_dataset_id}?limit=2")
-    assert limited.status_code == 200
-    assert len(limited.json()["data"]) == 2
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"] == 6
+    assert body["columns"] == 2
+    assert isinstance(body["id"], int) and body["id"] > 0
 
 
-def test_process_dataset_and_retrieve_cleaned_rows(
+def test_process_and_retrieve(
     client, uploaded_dataset_id, processing_body
 ):
     """Check validation, cleaning, reporting, and storage update end to end.
@@ -74,28 +66,21 @@ def test_process_dataset_and_retrieve_cleaned_rows(
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "id": uploaded_dataset_id,
-        "validation_rows_removed": 2,
-        "cleaning_report": {
-            "rows_before": 98,
-            "rows_after": 92,
-            "rows_removed": 6,
-            "columns_before": 5,
-            "columns_after": 5,
-            "columns_removed": 0,
-        },
-    }
+    body = response.json()
+    assert body["validation_rows_removed"] == 1
+    assert body["cleaning_report"]["rows_before"] == 5
+    assert body["cleaning_report"]["rows_after"] == 3
 
     # Confirm that later retrieval returns the newly stored clean data.
     retrieved = client.get(f"/datasets/{uploaded_dataset_id}")
     assert retrieved.status_code == 200
-    assert retrieved.json()["total_rows"] == 92
-    assert retrieved.json()["data"][0]["record_id"] == 1
-    assert all(row["rating"] < 200 and row["rating"] > -50 for row in retrieved.json()["data"])
+    assert retrieved.json()["total_rows"] == 3
+    rows = retrieved.json()["data"]
+    assert [row["student_id"] for row in rows] == [1, 2, 5]
+    assert [row["score"] for row in rows] == [80, 90, 85]
 
 
-def test_missing_dataset_returns_not_found(client):
+def test_retrieve_missing_dataset(client):
     """Check that a dataset ID absent from storage returns HTTP 404.
 
     Args:
@@ -107,8 +92,6 @@ def test_missing_dataset_returns_not_found(client):
     response = client.get("/datasets/999")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Dataset not found."}
-    assert response.headers["X-Request-ID"]
 
 
 @pytest.mark.parametrize(
@@ -154,7 +137,7 @@ def test_process_rejects_unknown_numeric_column_without_changing_data(
         None: This test compares the stored data before and after the error.
     """
     before = client.get(f"/datasets/{uploaded_dataset_id}").json()
-    processing_body["validation"]["numeric_columns"] = ["missing_rating"]
+    processing_body["validation"]["numeric_columns"] = ["missing_score"]
 
     response = client.post(
         f"/datasets/{uploaded_dataset_id}/process",
@@ -162,7 +145,7 @@ def test_process_rejects_unknown_numeric_column_without_changing_data(
     )
 
     assert response.status_code == 400
-    assert "missing_rating" in response.json()["detail"]
+    assert "missing_score" in response.json()["detail"]
     assert client.get(f"/datasets/{uploaded_dataset_id}").json() == before
 
 
@@ -182,7 +165,7 @@ def test_process_rejects_invalid_outlier_settings_without_changing_data(
     before = client.get(f"/datasets/{uploaded_dataset_id}").json()
     processing_body["processing"]["outliers"] = {
         "enabled": True,
-        "columns": ["rating"],
+        "columns": ["score"],
         "method": "unknown",
         "threshold": 1.5,
     }

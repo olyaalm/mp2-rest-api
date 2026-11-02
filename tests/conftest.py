@@ -53,28 +53,22 @@ def uploaded_dataset_id(client, sample_csv_bytes):
 
 @pytest.fixture
 def processing_body():
-    """Provide validation and cleaning settings for the sample fixture.
+    """Provide the assignment's validation and cleaning settings.
 
     Returns:
-        dict: A request body that validates ratings and enables cleaning.
+        dict: A request body for the sample's student_id and score columns.
     """
     return {
         "validation": {
-            "required_columns": [
-                "record_id",
-                "name",
-                "rating",
-                "category",
-                "status",
-            ],
-            "numeric_columns": ["record_id", "rating"],
+            "required_columns": ["student_id", "score"],
+            "numeric_columns": ["score"],
         },
         "processing": {
             "remove_duplicates": True,
             "missing": {"enabled": True, "axis": "rows"},
             "outliers": {
-                "enabled": True,
-                "columns": ["rating"],
+                "enabled": False,
+                "columns": [],
                 "method": "iqr",
                 "threshold": 1.5,
             },

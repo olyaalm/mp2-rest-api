@@ -9,10 +9,10 @@ This project exposes the MP1 data-validation and cleaning pipeline through a Fas
 - `src/storage.py` stores DataFrames and returns copies so callers cannot accidentally edit stored data.
 - `src/middleware.py` assigns request IDs and logs each request's method, path, status, and duration.
 - `data_pipeline/` contains the reusable MP1 loader, validator, processor, output, and utility modules.
-- `fixtures/sample_data.csv` is the supplied 100-row dataset used by the API tests.
+- `fixtures/sample_data.csv` is the six-row dataset used by the API tests.
 - `tests/` contains API tests and fixtures.
 
-The sample CSV has `record_id`, `name`, `rating`, `category`, and `status` columns. It includes two repeated records, two ratings written as text, two blank values, and two extreme numeric ratings. These cases let the tests exercise validation and each cleaning step using the same real fixture.
+The sample CSV has `student_id` and `score` columns. It includes one duplicate row, one blank score, and one non-numeric score so the tests can check validation and cleaning.
 
 ## Run the API
 
@@ -48,15 +48,15 @@ Example request:
 ```json
 {
   "validation": {
-    "required_columns": ["record_id", "name", "rating", "category", "status"],
-    "numeric_columns": ["record_id", "rating"]
+    "required_columns": ["student_id", "score"],
+    "numeric_columns": ["score"]
   },
   "processing": {
     "remove_duplicates": true,
     "missing": {"enabled": true, "axis": "rows"},
     "outliers": {
-      "enabled": true,
-      "columns": ["rating"],
+      "enabled": false,
+      "columns": [],
       "method": "iqr",
       "threshold": 1.5
     }
@@ -66,7 +66,7 @@ Example request:
 
 The outlier method can be `iqr` or `zscore`. Invalid processing settings or missing configured numeric columns return `400`; a dataset ID that does not exist returns `404`.
 
-With the included sample and the example settings, validation removes the two rows whose ratings are not numbers. Cleaning then removes the two repeated rows, two rows with blank values, and two extreme ratings. The resulting dataset has 92 rows. Blank values are handled during cleaning; invalid text in numeric columns is handled during validation.
+With the included sample and the example settings, validation removes the row whose score is `unknown`. Cleaning then removes the blank-score row and one copy of the duplicate. Three rows remain, with student IDs 1, 2, and 5.
 
 Every response includes an `X-Request-ID` header. The same ID appears in the server's request log, making it easier to match a client response to its log entry.
 
