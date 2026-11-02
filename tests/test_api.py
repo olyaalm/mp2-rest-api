@@ -1,5 +1,3 @@
-import pandas as pd
-import pytest
 import logging
 
 import pandas as pd
@@ -12,7 +10,14 @@ from src import log_requests
 
 
 def test_health_check(client):
-    """The health route returns status and a request ID."""
+    """Check that health reports the service status and request ID.
+
+    Args:
+        client: The test client for the API.
+
+    Returns:
+        None: This test checks the HTTP response directly.
+    """
     response = client.get("/health")
 
     assert response.status_code == 200
@@ -21,13 +26,28 @@ def test_health_check(client):
 
 
 def test_upload_and_retrieve_sample_data(client, uploaded_dataset_id):
-    """Uploading the fixture returns metadata and retrieval returns its rows."""
+    """Check that the uploaded sample has the expected fields and row count.
+
+    Args:
+        client: The test client for the API.
+        uploaded_dataset_id: ID returned when the sample file was uploaded.
+
+    Returns:
+        None: This test checks the retrieval responses directly.
+    """
     metadata = client.get(f"/datasets/{uploaded_dataset_id}")
 
     assert metadata.status_code == 200
     assert metadata.json()["id"] == uploaded_dataset_id
-    assert metadata.json()["total_rows"] == 6
-    assert len(metadata.json()["data"]) == 6
+    assert metadata.json()["total_rows"] == 100
+    assert len(metadata.json()["data"]) == 100
+    assert list(metadata.json()["data"][0]) == [
+        "record_id",
+        "name",
+        "rating",
+        "category",
+        "status",
+    ]
 
     # Confirm that the retrieval limit caps the returned records.
     limited = client.get(f"/datasets/{uploaded_dataset_id}?limit=2")
@@ -38,7 +58,16 @@ def test_upload_and_retrieve_sample_data(client, uploaded_dataset_id):
 def test_process_dataset_and_retrieve_cleaned_rows(
     client, uploaded_dataset_id, processing_body
 ):
-    """Validation removes invalid values and processing removes duplicates."""
+    """Check validation, cleaning, reporting, and storage update end to end.
+
+    Args:
+        client: The test client for the API.
+        uploaded_dataset_id: ID returned when the sample file was uploaded.
+        processing_body: Validation and processing settings for the sample.
+
+    Returns:
+        None: This test checks the processing report and later retrieval.
+    """
     response = client.post(
         f"/datasets/{uploaded_dataset_id}/process",
         json=processing_body,
@@ -47,13 +76,13 @@ def test_process_dataset_and_retrieve_cleaned_rows(
     assert response.status_code == 200
     assert response.json() == {
         "id": uploaded_dataset_id,
-        "validation_rows_removed": 1,
+        "validation_rows_removed": 2,
         "cleaning_report": {
-            "rows_before": 5,
-            "rows_after": 3,
-            "rows_removed": 2,
-            "columns_before": 2,
-            "columns_after": 2,
+            "rows_before": 98,
+            "rows_after": 92,
+            "rows_removed": 6,
+            "columns_before": 5,
+            "columns_after": 5,
             "columns_removed": 0,
         },
     }
@@ -61,12 +90,20 @@ def test_process_dataset_and_retrieve_cleaned_rows(
     # Confirm that later retrieval returns the newly stored clean data.
     retrieved = client.get(f"/datasets/{uploaded_dataset_id}")
     assert retrieved.status_code == 200
-    assert retrieved.json()["total_rows"] == 3
-    assert [row["student_id"] for row in retrieved.json()["data"]] == [1, 2, 5]
+    assert retrieved.json()["total_rows"] == 92
+    assert retrieved.json()["data"][0]["record_id"] == 1
+    assert all(row["rating"] < 200 and row["rating"] > -50 for row in retrieved.json()["data"])
 
 
 def test_missing_dataset_returns_not_found(client):
-    """A dataset ID that has not been uploaded returns a 404 response."""
+    """Check that a dataset ID absent from storage returns HTTP 404.
+
+    Args:
+        client: The test client for the API.
+
+    Returns:
+        None: This test checks the missing-resource response.
+    """
     response = client.get("/datasets/999")
 
     assert response.status_code == 404
@@ -84,7 +121,16 @@ def test_missing_dataset_returns_not_found(client):
     ],
 )
 def test_rejects_unsupported_or_unreadable_uploads(client, filename, contents):
-    """Unsupported filenames and unreadable CSV bytes are rejected."""
+    """Check that unsupported names and unreadable CSV contents return 400.
+
+    Args:
+        client: The test client for the API.
+        filename: Name supplied for the upload.
+        contents: Bytes supplied as the uploaded file contents.
+
+    Returns:
+        None: This test checks the upload error response.
+    """
     response = client.post(
         "/upload",
         files={"file": (filename, contents, "text/csv")},
@@ -97,9 +143,18 @@ def test_rejects_unsupported_or_unreadable_uploads(client, filename, contents):
 def test_process_rejects_unknown_numeric_column_without_changing_data(
     client, uploaded_dataset_id, processing_body
 ):
-    """A missing numeric column returns 400 and preserves the original upload."""
+    """Check bad numeric settings return 400 without replacing stored data.
+
+    Args:
+        client: The test client for the API.
+        uploaded_dataset_id: ID returned when the sample file was uploaded.
+        processing_body: Valid processing settings changed to include a bad column.
+
+    Returns:
+        None: This test compares the stored data before and after the error.
+    """
     before = client.get(f"/datasets/{uploaded_dataset_id}").json()
-    processing_body["validation"]["numeric_columns"] = ["missing_score"]
+    processing_body["validation"]["numeric_columns"] = ["missing_rating"]
 
     response = client.post(
         f"/datasets/{uploaded_dataset_id}/process",
@@ -107,18 +162,27 @@ def test_process_rejects_unknown_numeric_column_without_changing_data(
     )
 
     assert response.status_code == 400
-    assert "missing_score" in response.json()["detail"]
+    assert "missing_rating" in response.json()["detail"]
     assert client.get(f"/datasets/{uploaded_dataset_id}").json() == before
 
 
 def test_process_rejects_invalid_outlier_settings_without_changing_data(
     client, uploaded_dataset_id, processing_body
 ):
-    """An MP1 processing error returns 400 before storage is updated."""
+    """Check unsupported outlier methods return 400 without changing the upload.
+
+    Args:
+        client: The test client for the API.
+        uploaded_dataset_id: ID returned when the sample file was uploaded.
+        processing_body: Valid settings changed to use an unsupported method.
+
+    Returns:
+        None: This test compares the stored data before and after the error.
+    """
     before = client.get(f"/datasets/{uploaded_dataset_id}").json()
     processing_body["processing"]["outliers"] = {
         "enabled": True,
-        "columns": ["score"],
+        "columns": ["rating"],
         "method": "unknown",
         "threshold": 1.5,
     }
@@ -134,7 +198,14 @@ def test_process_rejects_invalid_outlier_settings_without_changing_data(
 
 
 def test_storage_copies_data_and_updates_metadata(client):
-    """Storage protects its saved DataFrame from edits to input and output copies."""
+    """Check that storage copies saved data and reports updated metadata.
+
+    Args:
+        client: The test client, which resets the shared storage for this test.
+
+    Returns:
+        None: This test checks storage methods directly.
+    """
     original = pd.DataFrame({"value": [1, 2]})
     dataset_id = storage.save(original, "values.csv")
     original.loc[0, "value"] = 99
@@ -158,7 +229,14 @@ def test_storage_copies_data_and_updates_metadata(client):
 
 
 def test_invalid_limit_is_rejected(client):
-    """The retrieval endpoint validates its positive row limit."""
+    """Check that retrieval rejects a limit below one.
+
+    Args:
+        client: The test client for the API.
+
+    Returns:
+        None: This test checks the HTTP validation response.
+    """
     response = client.get("/datasets/1?limit=0")
 
     assert response.status_code == 422
@@ -166,12 +244,24 @@ def test_invalid_limit_is_rejected(client):
 
 
 def test_unexpected_error_is_logged_and_hidden_from_client(caplog):
-    """Unexpected endpoint errors return a generic 500 and keep a request ID."""
+    """Check unexpected errors are logged but hidden behind a generic response.
+
+    Args:
+        caplog: Pytest's fixture for capturing application log records.
+
+    Returns:
+        None: This test checks the 500 response, request ID, and traceback log.
+    """
     test_app = FastAPI()
     test_app.middleware("http")(log_requests)
 
     @test_app.get("/unexpected-error")
     def raise_unexpected_error():
+        """Raise a test error so middleware behavior can be checked.
+
+        Returns:
+            None: The intentional exception prevents a normal return.
+        """
         # This private detail should appear in server logs, not the response.
         raise RuntimeError("private internal detail")
 

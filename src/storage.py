@@ -4,13 +4,28 @@ logger = logging.getLogger(__name__)
 
 
 class DatasetStorage:
+    """Keep uploaded DataFrames in memory and return protected copies."""
+
     def __init__(self):
-        # Keep each dataset's filename and DataFrame under its assigned ID.
+        """Create an empty store and start dataset IDs at one.
+
+        Returns:
+            None: Initializes this storage instance.
+        """
+        # Map each dataset ID to its filename and saved DataFrame.
         self._store = {}
         self._counter = 0
 
     def save(self, df, filename):
-        """Store a copy of the data and return a new integer ID."""
+        """Save a protected copy of a DataFrame and assign it an ID.
+
+        Args:
+            df: Table to save.
+            filename: Original filename associated with the table.
+
+        Returns:
+            int: The newly assigned dataset ID.
+        """
         # Give each upload a new ID and isolate stored data from caller edits.
         self._counter += 1
         dataset_id = self._counter
@@ -19,7 +34,14 @@ class DatasetStorage:
         return dataset_id
 
     def get(self, dataset_id):
-        """Return a copy of the stored DataFrame, or None."""
+        """Return a copy of a saved table, or None when its ID is unknown.
+
+        Args:
+            dataset_id: ID of the dataset to retrieve.
+
+        Returns:
+            DataFrame | None: A safe copy of the table, or None if absent.
+        """
         # Look up the dataset and avoid exposing the stored DataFrame directly.
         dataset = self._store.get(dataset_id)
         if dataset is None:
@@ -31,7 +53,14 @@ class DatasetStorage:
         return df
 
     def get_metadata(self, dataset_id):
-        """Return the dataset metadata, or None."""
+        """Return a dataset's filename and shape, or None if it is absent.
+
+        Args:
+            dataset_id: ID of the dataset to describe.
+
+        Returns:
+            dict | None: Dataset metadata, or None when no dataset matches.
+        """
         # Return metadata from the stored table without changing it.
         dataset = self._store.get(dataset_id)
         if dataset is None:
@@ -48,7 +77,15 @@ class DatasetStorage:
         }
 
     def update(self, dataset_id, df):
-        """Replace an existing dataset; return True, or False if missing."""
+        """Replace a saved table with a protected copy of a new DataFrame.
+
+        Args:
+            dataset_id: ID of the dataset to replace.
+            df: New table to save under the existing ID.
+
+        Returns:
+            bool: True if the dataset existed and was updated; otherwise False.
+        """
         # Replace data only for an ID that already exists, storing another copy.
         dataset = self._store.get(dataset_id)
         if dataset is None:
@@ -60,7 +97,11 @@ class DatasetStorage:
         return True
 
     def clear(self):
-        """Clear all data and reset the ID counter."""
+        """Remove every dataset and reset the next ID to one.
+
+        Returns:
+            None: Clears this storage instance in place.
+        """
         # Reset storage so tests and app restarts begin with predictable IDs.
         self._store.clear()
         self._counter = 0

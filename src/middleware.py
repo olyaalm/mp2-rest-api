@@ -12,7 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 async def log_requests(request: Request, call_next):
-    """Log one request and attach its request ID to the response."""
+    """Log one request and add its ID to the outgoing response.
+
+    Args:
+        request: Incoming HTTP request from the client.
+        call_next: FastAPI handler that passes the request to the next layer.
+
+    Returns:
+        Response: Endpoint response with an ``X-Request-ID`` header.
+
+    Notes:
+        Unexpected exceptions are logged with a traceback and returned as a
+        generic 500 response so internal details are not exposed to clients.
+    """
     # Create an ID that can connect a client response with its log messages.
     request_id = uuid.uuid4().hex[:8]
     request.state.request_id = request_id

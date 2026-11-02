@@ -8,7 +8,14 @@ logger = logging.getLogger(__name__)
 
 
 def setup_logging(verbose=False):
-    """Configure pipeline logging at the requested detail level."""
+    """Set the pipeline log level and shared message format.
+
+    Args:
+        verbose: When True, include debug messages; otherwise use info level.
+
+    Returns:
+        None: Configures Python's root logger in place.
+    """
     # Choose detailed messages or normal progress messages.
     level = logging.DEBUG if verbose else logging.INFO
 
@@ -21,7 +28,14 @@ def setup_logging(verbose=False):
 
 
 def validate_input(filepath):
-    """Return whether filepath exists and is a regular file."""
+    """Check whether a path points to an existing regular file.
+
+    Args:
+        filepath: Path to check.
+
+    Returns:
+        bool: True when the path is a file, or False when it is missing.
+    """
     # Check that the path points to a file.
     if Path(filepath).is_file():
         logger.info("Input file validated: %s", filepath)

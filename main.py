@@ -30,14 +30,28 @@ storage = DatasetStorage()
 
 @app.get("/health", response_model=HealthResponse)
 def health_check():
-    """Return the application status and version."""
+    """Return the API's current status and version.
+
+    Returns:
+        dict: A small JSON-compatible status response.
+    """
     # Respond with a small status payload without changing server state.
     return {"status": "ok", "version": "1.0.0"}
 
 
 @app.post("/upload", response_model=DatasetInfo)
 async def upload_dataset(file: UploadFile = File(...)):
-    """Read and store a CSV upload."""
+    """Read a CSV upload, save it in memory, and return its metadata.
+
+    Args:
+        file: CSV file sent by the client as multipart form data.
+
+    Returns:
+        DatasetInfo: The stored dataset's ID, filename, and table shape.
+
+    Raises:
+        HTTPException: If the file is not a readable CSV.
+    """
     # Check the uploaded filename before reading or parsing its contents.
     filename = file.filename or ""
     extension = Path(filename).suffix.lower()
@@ -70,7 +84,18 @@ async def upload_dataset(file: UploadFile = File(...)):
 
 @app.get("/datasets/{dataset_id}")
 def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
-    """Return up to limit rows from a stored dataset."""
+    """Return a limited number of rows from a stored dataset.
+
+    Args:
+        dataset_id: ID assigned when the CSV was uploaded.
+        limit: Maximum number of rows to include in the response.
+
+    Returns:
+        dict: Dataset ID, returned records, and total row count.
+
+    Raises:
+        HTTPException: If the dataset ID is not in storage.
+    """
     # Check the ID first so a missing dataset gets a clear 404 response.
     metadata = storage.get_metadata(dataset_id)
     if metadata is None:
@@ -89,7 +114,21 @@ def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
     response_model=ProcessingReport,
 )
 def process_dataset(dataset_id: int, config: ProcessConfig):
-    """Validate and process a stored dataset using the reusable MP1 functions."""
+    """Validate and clean a stored table, then save the successful result.
+
+    Args:
+        dataset_id: ID assigned when the CSV was uploaded.
+        config: Required-column, numeric-validation, and cleaning settings.
+
+    Returns:
+        ProcessingReport: Validation row removals and the cleaning summary.
+
+    Raises:
+        HTTPException: For a missing dataset or invalid processing settings.
+
+    Notes:
+        Storage is updated only after validation and cleaning both succeed.
+    """
     # Retrieve a copy so failed processing cannot change the stored dataset.
     df = storage.get(dataset_id)
     if df is None:
@@ -107,7 +146,11 @@ def process_dataset(dataset_id: int, config: ProcessConfig):
     ]
     if missing_numeric_columns:
         message = f"Numeric columns not found: {missing_numeric_columns}"
-        logger.warning("Dataset processing rejected: id=%s, %s", dataset_id, message)
+        logger.warning(
+            "Dataset processing rejected: id=%s, %s",
+            dataset_id,
+            message,
+        )
         raise HTTPException(status_code=400, detail=message)
 
     try:
@@ -130,7 +173,11 @@ def process_dataset(dataset_id: int, config: ProcessConfig):
         cleaning_report = create_cleaning_report(before_processing, processed)
     except ValueError as error:
         # Convert expected MP1 validation or setting errors into an HTTP 400.
-        logger.warning("Dataset processing rejected: id=%s, error=%s", dataset_id, error)
+        logger.warning(
+            "Dataset processing rejected: id=%s, error=%s",
+            dataset_id,
+            error,
+        )
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     # Save only after every validation and processing step has succeeded.

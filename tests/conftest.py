@@ -10,7 +10,11 @@ from main import app, storage
 
 @pytest.fixture
 def client():
-    """Give each test a clean in-memory store and a running test client."""
+    """Create a test client with an empty in-memory dataset store.
+
+    Yields:
+        TestClient: A client connected to the FastAPI application.
+    """
     storage.clear()
     with TestClient(app) as test_client:
         yield test_client
@@ -19,14 +23,26 @@ def client():
 
 @pytest.fixture
 def sample_csv_bytes():
-    """Read the course CSV fixture as bytes, as a file upload would arrive."""
+    """Read the sample CSV as bytes for a multipart upload.
+
+    Returns:
+        bytes: The complete contents of the sample CSV fixture.
+    """
     filepath = Path("fixtures") / "sample_data.csv"
     return filepath.read_bytes()
 
 
 @pytest.fixture
 def uploaded_dataset_id(client, sample_csv_bytes):
-    """Upload the sample table and share its assigned ID with a test."""
+    """Upload the sample table and return its assigned ID.
+
+    Args:
+        client: The test client for the API.
+        sample_csv_bytes: The fixture file contents to upload.
+
+    Returns:
+        int: The ID assigned to the uploaded dataset.
+    """
     response = client.post(
         "/upload",
         files={"file": ("sample_data.csv", sample_csv_bytes, "text/csv")},
@@ -37,18 +53,28 @@ def uploaded_dataset_id(client, sample_csv_bytes):
 
 @pytest.fixture
 def processing_body():
-    """Provide valid settings for the sample fixture's columns."""
+    """Provide validation and cleaning settings for the sample fixture.
+
+    Returns:
+        dict: A request body that validates ratings and enables cleaning.
+    """
     return {
         "validation": {
-            "required_columns": ["student_id", "score"],
-            "numeric_columns": ["score"],
+            "required_columns": [
+                "record_id",
+                "name",
+                "rating",
+                "category",
+                "status",
+            ],
+            "numeric_columns": ["record_id", "rating"],
         },
         "processing": {
             "remove_duplicates": True,
             "missing": {"enabled": True, "axis": "rows"},
             "outliers": {
-                "enabled": False,
-                "columns": [],
+                "enabled": True,
+                "columns": ["rating"],
                 "method": "iqr",
                 "threshold": 1.5,
             },

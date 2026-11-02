@@ -10,7 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 def remove_duplicates(df):
-    """Remove duplicate rows while keeping the first copy."""
+    """Remove repeated rows and keep the first occurrence of each row.
+
+    Args:
+        df: Table to check. The original table is not modified.
+
+    Returns:
+        DataFrame: A copy with duplicate rows removed.
+    """
     # Drop rows whose values match across every column.
     cleaned = df.drop_duplicates()
     logger.debug("remove_duplicates: %s -> %s rows", len(df), len(cleaned))
@@ -18,7 +25,18 @@ def remove_duplicates(df):
 
 
 def handle_missing(df, axis="rows"):
-    """Drop rows or columns containing missing values."""
+    """Remove rows or columns that contain at least one missing value.
+
+    Args:
+        df: Table to clean. The original table is not modified.
+        axis: ``"rows"`` removes rows; ``"columns"`` removes columns.
+
+    Returns:
+        DataFrame: A copy with the requested rows or columns removed.
+
+    Raises:
+        ValueError: If axis is not ``"rows"`` or ``"columns"``.
+    """
     # Confirm that the requested direction is rows or columns.
     if not isinstance(axis, str) or axis not in {"rows", "columns"}:
         logger.error("Unsupported missing-value axis: %s", axis)
@@ -37,7 +55,20 @@ def handle_missing(df, axis="rows"):
 
 
 def remove_outliers(df, columns, method, threshold):
-    """Remove outliers from the specified numeric columns."""
+    """Remove rows outside the selected limits in numeric columns.
+
+    Args:
+        df: Table to check. The original table is not modified.
+        columns: Numeric column names to check for outliers.
+        method: ``"iqr"`` or ``"zscore"`` outlier calculation.
+        threshold: Non-negative distance used to mark outliers.
+
+    Returns:
+        DataFrame: A copy without rows marked as outliers.
+
+    Raises:
+        ValueError: If the method is not ``"iqr"`` or ``"zscore"``.
+    """
     # Accept only the two outlier methods supported by the pipeline.
     if not isinstance(method, str) or method not in {"iqr", "zscore"}:
         logger.error("Unsupported outlier method: %s", method)
@@ -103,7 +134,18 @@ def remove_outliers(df, columns, method, threshold):
 
 
 def process_data(df, config):
-    """Apply the processing steps enabled in the configuration."""
+    """Apply the enabled duplicate, missing-value, and outlier steps.
+
+    Args:
+        df: Validated table to clean.
+        config: Dictionary containing a ``processing`` settings section.
+
+    Returns:
+        DataFrame: The cleaned table. The input table is not modified.
+
+    Raises:
+        ValueError: If processing settings are missing or unsupported.
+    """
     # Read the settings that choose which cleaning steps are running.
     if not isinstance(config, dict) or not isinstance(
         config.get("processing"), dict
@@ -167,7 +209,15 @@ def process_data(df, config):
 
 
 def create_cleaning_report(df_before, df_after):
-    """Summarize how many rows and columns changed during cleaning."""
+    """Count rows and columns before and after the cleaning steps.
+
+    Args:
+        df_before: Table immediately before processing.
+        df_after: Table immediately after processing.
+
+    Returns:
+        dict[str, int]: Before, after, and removed counts for rows and columns.
+    """
     # Count rows and columns before and after the processing steps.
     rows_before = len(df_before)
     rows_after = len(df_after)

@@ -2,7 +2,14 @@ import logging
 
 
 def setup_logging(verbose=False):
-    """Configure logging using the MP1 pipeline's log format."""
+    """Set the shared log level and message format.
+
+    Args:
+        verbose: When True, include debug messages; otherwise use info level.
+
+    Returns:
+        None: Configures Python's root logger in place.
+    """
     # Use detailed messages in development and normal progress logs otherwise.
     level = logging.DEBUG if verbose else logging.INFO
 

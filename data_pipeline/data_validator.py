@@ -10,7 +10,22 @@ logger = logging.getLogger(__name__)
 
 
 def validate_dataframe(df, required_columns, numeric_columns):
-    """Return a copy containing required columns and valid numeric data."""
+    """Check required columns and keep rows with valid numeric values.
+
+    Args:
+        df: Table to check. The original table is not modified.
+        required_columns: Column names that must be present in the table.
+        numeric_columns: Present columns whose non-numeric values remove a row.
+
+    Returns:
+        DataFrame: A copy with valid numeric values converted to numbers.
+
+    Raises:
+        ValueError: If a required or numeric column is missing.
+
+    Notes:
+        Blank values are left for the missing-value processing step to handle.
+    """
     # Find required column names that are missing from the table.
     missing_columns = [
         column for column in required_columns if column not in df.columns
